@@ -1,6 +1,12 @@
 #SV and small variant pipeline for long-read sequencing (LRS) - from raw fastq files to variant calls
 #I recommend running all scripts on a HPC due to the size of the LRS data
 
+#set genomic reference directory, output directory and data directories
+refDIR="add_file_path_here"
+outDIR="add_file_path_here"
+dataDIR="add_file_path_here"
+
+#-----------------------------------------------------------------------#
 #minimap2
 
 #mload minimap2 version minimap2/2.24-GCCcore-11.2.0
@@ -33,6 +39,9 @@ module load SAMtools/1.16.1-GCC-11.2.0
 
 samtools view -S -b alignment_file.sam > alignment_file.bam 
 
+# if you want to filter for reads in primary alignment, use the following command and subsequently this bam file throughout
+samtools view -bF 0x900 -q 1 alignment_file.bam > primaries_alignment_file.bam
+
 #Sorting - this step sorts the records by position on the reference, rather than by the original order that the reads in the .FASTQ file had. 
 #This makes it much quicker for downstream tools to access data for reads co-located on the reference sequence.
 
@@ -45,26 +54,42 @@ samtools index alignment_file.bam
 
 #this will output a .bam and .bam.bai file which can be used to run variant callers
 
-#################################################
+#-----------------------------------------------------------------------#
 # run sniffes command to call structural variants 
 #I recommend installing Sniffles into a conda environment, activating the environemnt and running the following code:
 
 #sniffles version 2.0
 sniffles --input file_name.bam  --vcf file_name.vcf.gz --reference ${refDIR}/hg38.fa --non-germline
 
-####################################################
+#-----------------------------------------------------------------------#
 #as with snifffles alternative structural variant callers can be run in this way using a conda environemnt such as CuteSV
 #install and activate CuteSV in a conda environemnt
 
 cuteSV alignment_file.bam ${refDIR}/hg38.fa cutesv_alignment_file_output /file_path_to_output
 
-######################################################
+#-----------------------------------------------------------------------#
 #Example script using ClairS-TO to call SNV and Indels
-
-#set genomic reference directory, output directory and data directories
-refDIR="add_file_path_here"
-outDIR="add_file_path_here"
-dataDIR="add_file_path_here"
 
 #install ClairS-TO into a micromamba environment, then run the following command specifying the threads and basecalling model, many models are available on the ClaiS-TO GitHub page
 /micromamba/ClairS-TO/run_clairs_to -T ${dataDIR}/file_name.bam -R ${refDIR}/hg38.fa -o ${outDIR}/file_name -t 8 -p ont_r10_dorado_hac_4khz
+
+#enumerate SNV and indels using BCFtools from the output VCF from ClairS-To
+module load BCFtools
+
+#to view SNVs
+#to view autosomal only chromosomes
+bcftools view -r chr1,chr2,chr3,chr4,chr5,chr6,chr7,chr8,chr9,chr10,chr11,chr12,chr13,chr14,chr15,chr16,chr17,chr18,chr19,chr20,chr21,chr22 snv.vcf.gz -o autosomal_snv.vcf
+
+bcftools view -H autosomal_snv.vcf | wc -l 
+
+#to check those that pass using the BCFtools PASS filter
+bcftools view -H -f PASS autosomal_snv.vcf | wc -l 
+
+#to view Indels
+bcftools view -r chr1,chr2,chr3,chr4,chr5,chr6,chr7,chr8,chr9,chr10,chr11,chr12,chr13,chr14,chr15,chr16,chr17,chr18,chr19,chr20,chr21,chr22 indel.vcf.gz -o autosomal_indel.vcf
+
+bcftools view -H autosomal_indel.vcf | wc -l 
+
+#to check those that pass using the BCFtools PASS filter
+bcftools view -H -f PASS autosomal_indel_S261955.vcf | wc -l 
+
