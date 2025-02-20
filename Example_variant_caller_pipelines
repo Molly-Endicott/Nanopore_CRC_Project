@@ -1,0 +1,70 @@
+#SV and small variant pipeline for long-read sequencing (LRS) - from raw fastq files to variant calls
+#I recommend running all scripts on a HPC due to the size of the LRS data
+
+#minimap2
+
+#mload minimap2 version minimap2/2.24-GCCcore-11.2.0
+module load minimap2/2.24-GCCcore-11.2.0
+
+#minimap2 outline: minimap2 -a -x map-ont ref.fa query.fq > alignment.sam
+#minimap2 is the base command.
+#-a is a flag which turns on SAM output, 
+#-x map-ont tells minimap2 that we want to align ONT data, allowing the tool to modify its internal parameters to make the best alignments
+#ref.fa is a positional argument, which means it must come first after any flags such as -a. This term refers to the reference, the sequence(s) against which your reads will be aligned.
+#query.fq represents the raw .FASTQ file containing your reads
+#alignment.sam is a statement saying 'redirect the output to a file called alignment.sam'. Don't worry, alignment.sam will be created if it doesn't already exist.
+
+#example code:
+minimap2 -a -x map-ont -t 16 ${refDIR}/hg38.fa ${rawDIR}/all_fastq_pass.fq > alignment_file.sam 
+
+#-----------------------------------------------------------------------#
+#samtools
+
+#module load SAMtools version SAMtools/1.16.1-GCC-11.2.0
+module load SAMtools/1.16.1-GCC-11.2.0
+
+#samtools is the base command.
+#view is the subcommand. Samtools has many different sub-commands. This one, view, is used for converting SAM/BAM files between formats, as well as accessing certain records within the file,
+#-S is a flag that tells samtools view that our input will be a SAM file.
+#-b is a flag that tells samtools view that it should output BAM records.
+#-T is a flag that tells samtools the reference file
+#alignment.sam is the SAM file we made, which we inputting to this command.
+#alignment.bam is the file to which we will redirect the BAM output.
+
+samtools view -S -b alignment_file.sam > alignment_file.bam 
+
+#Sorting - this step sorts the records by position on the reference, rather than by the original order that the reads in the .FASTQ file had. 
+#This makes it much quicker for downstream tools to access data for reads co-located on the reference sequence.
+
+samtools sort -o alignment_file.bam alignment_file.sam 
+
+#If given the -o argument with a filename ending in .bam, samtools sort will output a BAM file,
+#Next the sorted file needs to be indexed
+
+samtools index alignment_file.bam 
+
+#this will output a .bam and .bam.bai file which can be used to run variant callers
+
+#################################################
+# run sniffes command to call structural variants 
+#I recommend installing Sniffles into a conda environment, activating the environemnt and running the following code:
+
+#sniffles version 2.0
+sniffles --input file_name.bam  --vcf file_name.vcf.gz --reference ${refDIR}/hg38.fa --non-germline
+
+####################################################
+#as with snifffles alternative structural variant callers can be run in this way using a conda environemnt such as CuteSV
+#install and activate CuteSV in a conda environemnt
+
+cuteSV alignment_file.bam ${refDIR}/hg38.fa cutesv_alignment_file_output /file_path_to_output
+
+######################################################
+#Example script using ClairS-TO to call SNV and Indels
+
+#set genomic reference directory, output directory and data directories
+refDIR="add_file_path_here"
+outDIR="add_file_path_here"
+dataDIR="add_file_path_here"
+
+#install ClairS-TO into a micromamba environment, then run the following command specifying the threads and basecalling model, many models are available on the ClaiS-TO GitHub page
+/micromamba/ClairS-TO/run_clairs_to -T ${dataDIR}/file_name.bam -R ${refDIR}/hg38.fa -o ${outDIR}/file_name -t 8 -p ont_r10_dorado_hac_4khz
